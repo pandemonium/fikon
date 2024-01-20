@@ -34,8 +34,8 @@ module ParseState =
                     TokenLength = by }
 
     let token self =
-        let endOffset = offset self - 1
-        self.Input.[self.TokenStart..endOffset]
+        let tokenEnd = offset self - 1
+        self.Input.[self.TokenStart..tokenEnd]
 
 module ParseResult =
     let accepted returns input =
@@ -62,6 +62,7 @@ module Parse =
     let empty returns : Parse<'t, 'a> =
         ParseResult.accepted returns
 
+    (* These are very similar - they ought to be re-written in terms of one another. *)
     let take count : Parse<'t, 't []> = fun input ->
         if ParseState.canAdvance count input then
             let input = ParseState.advance count input
@@ -70,6 +71,7 @@ module Parse =
         else
             ParseResult.balked input
 
+    (* These are very similar - they ought to be re-written in terms of one another. *)
     let accept suchThat : Parse<'t, 't> = fun input ->
         if ParseState.canAdvance 1 input && ParseState.peek input |> suchThat then
             let input = ParseState.advance 1 input
@@ -78,8 +80,23 @@ module Parse =
         else
             ParseResult.balked input
 
+    let acceptIf (select : 't -> 'a option) : Parse<'t, 'a> = fun input ->
+        (* This is very busy. *)
+        if ParseState.canAdvance 1 input then
+            match select <| ParseState.peek input with
+            | Some tok -> 
+                ParseState.advance 1 input
+                |> ParseResult.accepted tok
+            | None ->
+                ParseResult.balked input
+        else
+            ParseResult.balked input
+
     let map f self : Parse<'t, 'b> =
         self >> ParseResult.map f
+
+    let produce production =
+        map (fun _ -> production)
 
     let filterMap f self : Parse<'t, 'b> =
         self
@@ -92,8 +109,8 @@ module Parse =
          self
          >> ParseResult.map f
          >> function { State   = input
-                       Returns = Some q } -> q input
-                   | { State = input }    -> ParseResult.balked input
+                       Returns = Some next } -> next input
+                   | { State = input }       -> ParseResult.balked input
 
     let orElse (p : Parse<'t, 'a>) (q : Parse<'t, 'a>) : Parse<'t, 'a> =
         p >> function { Returns = Some _ } as it -> it
@@ -116,7 +133,7 @@ module Parse =
     let oneOrMore self =
         zeroOrMore self
         |> andAlso self
-        |> map (fun (p, ps) -> p::ps) // Lis
+        |> map (fun (p, ps) -> p::ps)
 
     let optionally self =
         let p = map Some self
@@ -149,6 +166,11 @@ module Parse =
 
         let char ch : Parse<char, char> =
             accept (fun tok -> tok = ch)
+
+        let number (tryParse : string -> bool * 'a) (image : string) : 'a option =
+            match tryParse image with
+            | true, out -> Some out
+            | _ -> None
 
         let run (parser : Parse<char, 'a>) (input : string) =
             input.ToCharArray ()

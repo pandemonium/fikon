@@ -55,6 +55,8 @@ module ParseResult =
                  Returns = returns } : ParseResult<'t, 'b> =
         f input returns
 
+    let toOption = _.Returns
+
 module Parse =
     let run (self : Parse<'t, 'a>) =
         ParseState.from >> self
@@ -98,12 +100,12 @@ module Parse =
     let produce production =
         map (fun _ -> production)
 
-    let filterMap f self : Parse<'t, 'b> =
-        self
-        >> ParseResult.map f
-        >> function { State   = input
-                      Returns = Some (Some x) } -> ParseResult.accepted x input
-                  | { State = input }           -> ParseResult.balked input
+    let filterMap f self : Parse<'t, 'b> = fun input ->
+        self input
+        |> ParseResult.map f
+        |> function { State   = input'
+                      Returns = Some (Some x) } -> ParseResult.accepted x input'
+                  | _otherwise                  -> ParseResult.balked input
 
     let bind f self : Parse<'t, 'b> =
          self
@@ -117,7 +119,7 @@ module Parse =
                     | { State = input }          -> q input
 
     let choice alternatives : Parse<'t, 'a> =
-        Seq.reduce orElse alternatives
+        Seq.reduceBack orElse alternatives
 
     let andAlso p q =
         bind (fun px -> map (fun qx -> (px, qx)) q) p

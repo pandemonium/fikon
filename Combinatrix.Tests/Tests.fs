@@ -101,7 +101,7 @@ let ``Enclosed within`` () =
 
 [<Fact>]
 let ``Pick from any of the alternatives`` () =
-    let abc = 
+    let abc =
         Parse.anyOf ['a'; 'b'; 'c']
         |> Parse.oneOrMore
         |> Parse.map String.Concat
@@ -127,11 +127,27 @@ let ``Choices`` () =
               Parse.Text.char 'b'
               Parse.Text.char 'c' ]
             |> Parse.choice
-            |> Parse.zeroOrMore
+            |> Parse.oneOrMore
 
         return String.Concat abcs
     }
 
-    let outcome = Parse.Text.run abc "acbabcabc"
+    let outcome = Parse.Text.run abc "cbabcabc"
     printfn "%A" outcome
-    Assert.Equal(Some "acbabcabc", outcome.Returns)
+    Assert.Equal(Some "cbabcabc", outcome.Returns)
+
+[<Fact>]
+let ``This or else that`` () =
+    let a = Parse.Text.char 'a'
+    let b = Parse.Text.char 'b'
+    let ab = Parse.orElse a b
+
+    let outcome = Parse.Text.run ab "a"
+    Assert.Equal(Some 'a', outcome.Returns)
+
+    let outcome = Parse.Text.run ab "b"
+    Assert.Equal(Some 'b', outcome.Returns)
+
+    let outcome = Parse.Text.run ab ""
+    Assert.Equal(None, outcome.Returns)
+

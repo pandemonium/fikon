@@ -1,12 +1,14 @@
-﻿namespace Fikon.Tokenizer
+﻿namespace Fikon
+
+open Combinatrix.Combine
 
 module Types =
     type Fault = Expeced of string | Eof
 
-    type Token = SeparatorToken  of Separator
-               | IdentifierToken of Identifier
-               | KeywordToken    of Keyword
-               | LiteralToken    of Literal
+    type Token = Separator  of Separator
+               | Identifier of Identifier
+               | Keyword    of Keyword
+               | Literal    of Literal
 
     and Separator = LeftParen          | Semicolon
                   | RightParen         | Comma
@@ -72,9 +74,8 @@ module Types =
                    | "or"     -> Some Or
                    | _        -> None
 
-module Parser =
+module Tokenizer =
     open System
-    open Combinatrix.Combine
     open Parse
     open Types
 
@@ -87,7 +88,7 @@ module Parser =
 
     let separator : Parse<char, Token> =
         acceptIf Separator.tryFrom
-        |> map SeparatorToken
+        |> map Separator
 
     let compoundSeparator : Parse<char, Token> =
         [ Text.literal ">=" |> produce GreaterThanOrEqual
@@ -96,8 +97,8 @@ module Parser =
           Text.literal "!=" |> produce NotEqual
           Text.literal "->" |> produce ThinRightArrow
           Text.literal ":=" |> produce ReAssign ]
-        |> choice 
-        |> map SeparatorToken
+        |> choice
+        |> map Separator
 
     let digit =
         accept Char.IsDigit
@@ -105,44 +106,76 @@ module Parser =
     let period = Text.char '.'
     let doubleQuote = Text.char '"'
 
+    let boolean =
+        let t = Text.literal "True"  |> produce true
+        let f = Text.literal "False" |> produce false
+        map Boolean <| orElse t f
+        
+    let floatingPoint =
+        let mantissa = oneOrMore digit
+        mantissa
+        |> skipLeft period
+        |> andAlso mantissa
+        |> filterMap (fun (a, b) -> 
+                printfn "%A" (a, b)
+                Text.number Double.TryParse $"{a}.{b}"
+           )
+        |> map FloatingPoint
+            
+    let integer =
+        oneOrMore digit
+        |> filterMap (String.Concat >> Text.number Int64.TryParse)
+        |> map Integer
+                
+    let text =
+        let quotableString = 
+            accept (fun c -> c <> '"')
+            |> zeroOrMore
+            |> map String.Concat
+            |> map Text
+        in enclosedWithin doubleQuote doubleQuote quotableString
+
     let literal =
-        let boolean =
-            let t = Text.literal "True" |> produce true
-            let f = Text.literal "False" |> produce false
-            map Boolean <| orElse t f
+//        integer
+//        |> orElse boolean
+//        |> orElse text
+//        |> orElse floatingPoint
 
-        let floatingPoint =
-            let mantissa = oneOrMore digit
-            mantissa
-            |> skipLeft period
-            |> andAlso mantissa
-            |> filterMap (fun (a, b) -> Text.number Double.TryParse $"{a}.{b}")
-            |> map FloatingPoint
-
-        let integer =
-            oneOrMore digit
-            |> filterMap (String.Concat >> Text.number Int64.TryParse)
-            |> map Integer
-
-        let text =
-            let quotableString = 
-                accept (fun c -> c <> '"')
-                |> zeroOrMore
-                |> map String.Concat
-                |> map Text
-
-            enclosedWithin doubleQuote doubleQuote quotableString
-
-        [ boolean
-          floatingPoint
-          integer
-          text ]
+        [ floatingPoint
+          text 
+          boolean
+          integer ]
         |> choice
-        |> map LiteralToken
+        |> map Literal
+
+    let id =
+        seq { yield! seq { 'a'..'z' }
+              yield! seq { 'A'..'Z' }
+              yield '_' }
+        |> anyOf
+        |> oneOrMore
+        |> map String.Concat
+
+    let keywordOrIdentifier =
+        let keyword =
+            id
+            |> filterMap Keyword.tryFrom
+            |> map Keyword
+
+        let identifier =
+            id
+            |> map (Identifier << Id)
+
+        orElse keyword identifier
 
     let token =
         [ literal
+          keywordOrIdentifier
           compoundSeparator
           separator ]
         |> choice
         |> lexeme
+
+    let run =
+        oneOrMore token
+        |> Text.run

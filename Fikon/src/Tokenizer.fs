@@ -76,6 +76,7 @@ module Types =
 
 module Tokenizer =
     open System
+    open System.Globalization
     open Parse
     open Types
 
@@ -110,23 +111,30 @@ module Tokenizer =
         let t = Text.literal "True"  |> produce true
         let f = Text.literal "False" |> produce false
         map Boolean <| orElse t f
-        
-    let floatingPoint =
-        let mantissa = oneOrMore digit
-        mantissa
-        |> skipLeft period
-        |> andAlso mantissa
-        |> filterMap (fun (a, b) -> 
-                printfn "%A" (a, b)
-                Text.number Double.TryParse $"{a}.{b}"
-           )
-        |> map FloatingPoint
-            
+
+    let floatingPoint : Parse<char, Literal> = parse {
+        let mantissa = 
+            oneOrMore digit
+            |> map String.Concat
+        let! negation =
+            Text.char '-' 
+            |> optionally
+            |> map (fun c -> if c.IsSome then "-" else "")
+
+        let! p = mantissa
+        let! _ = period
+        let! q = mantissa
+
+        return! $"{negation}{p}.{q}"
+            |> Text.number (fun s -> Double.TryParse (s, CultureInfo.InvariantCulture))
+            |> function Some number -> empty (FloatingPoint number) | _ -> failure ""
+    }
+
     let integer =
         oneOrMore digit
         |> filterMap (String.Concat >> Text.number Int64.TryParse)
         |> map Integer
-                
+
     let text =
         let quotableString = 
             accept (fun c -> c <> '"')
@@ -136,15 +144,10 @@ module Tokenizer =
         in enclosedWithin doubleQuote doubleQuote quotableString
 
     let literal =
-//        integer
-//        |> orElse boolean
-//        |> orElse text
-//        |> orElse floatingPoint
-
         [ floatingPoint
           text 
-          boolean
-          integer ]
+          integer
+          boolean ]
         |> choice
         |> map Literal
 

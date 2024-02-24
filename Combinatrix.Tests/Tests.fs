@@ -69,6 +69,24 @@ let ``Builder`` () =
     Assert.Equal(Some ('a', 'b', 'c'), outcome.Returns)
 
 [<Fact>]
+let ``More builder`` () =
+    let digit =
+        Parse.accept Char.IsDigit
+    let mantissa = 
+        Parse.oneOrMore digit
+        |> Parse.map String.Concat
+    let period = Parse.Text.char '.'
+    let floatingPoint = parse {
+        let! p = mantissa
+        let! _ = period
+        let! q = mantissa
+        return $"{p}.{q}"
+    }
+    let outcome = Parse.Text.run floatingPoint "1.2"
+
+    Assert.Equal (Some ("1.2"), outcome.Returns)
+
+[<Fact>]
 let ``Separated sequences`` () =
     let letter = Parse.accept Char.IsLetter
     let comma = Parse.Text.char ','

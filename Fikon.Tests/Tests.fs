@@ -10,6 +10,21 @@ let tokenize =
     >> ParseResult.toOption
     >> Option.get
 
+[<AutoOpen>]
+module Construction =
+    let produces expected =
+        tokenize >> fun actual ->
+            Assert.Equal<Types.Token list> (expected, actual)    
+
+    let kw = Types.Keyword
+    let id = Types.Id >> Types.Identifier
+    let sep = Types.Separator
+    let text = Types.Text >> Types.Literal
+    let int = Types.Integer >> Types.Literal
+    let float = Types.FloatingPoint >> Types.Literal
+    let semi = sep Types.Semicolon
+    let assign = sep Types.Assign
+
 [<Fact>]
 let ``Tokenize integer`` () =
     let source = "123"
@@ -23,23 +38,31 @@ let ``Tokenize integer`` () =
     Assert.Equal<Types.Literal list> ([Types.Integer 123], [tokens])
 
 [<Fact>]
-let ``Tokenize identifier or keyword`` () =
-    let source = "let let"
-    let tokens =
-        Parse.Text.run (Parse.oneOrMore (Tokenizer.lexeme Tokenizer.keywordOrIdentifier)) source
-        |> ParseResult.toOption
-        |> Option.get
+let ``Tokenize literals`` () =
+    let literalTokens =
+        Parse.Text.run Tokenizer.literal
+        >> ParseResult.toOption
+        >> Option.get
 
-    printfn "%A" tokens
+    let literal expected =
+        literalTokens >> fun actual -> 
+            Assert.Equal<Types.Token> (expected, actual)    
 
-    Assert.Equal<Types.Token list> ([], [tokens])
+    "-123.456" |> literal (float -123.456)
+
+    "\"123\"" |> literal (text "123")
+
+    "123" |> literal (int 123)
 
 [<Fact>]
 let ``Let statement`` () =
-//    let source = "let x = \"123\";"
-    let source = "let let"
-    let tokens = tokenize source
+    let case rhs =
+        produces [ kw Types.Let; id "x"; assign; rhs; semi ]
 
-    printfn "%A" tokens
+    "let x = \"123\";" |> case (text "123")
 
-    Assert.Equal<Types.Token list> ([], tokens)
+    "let x = foo;" |> case (id "foo")
+
+    "let x = 123;" |> case (int 123)
+
+    "let x = -427.314 ; " |> case (float -427.314)

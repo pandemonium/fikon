@@ -64,6 +64,9 @@ module Parse =
     let empty returns : Parse<'t, 'a> =
         ParseResult.accepted returns
 
+    let failure (error : string) : Parse<'t, 'a> =
+        ParseResult.balked
+
     (* These are very similar - they ought to be re-written in terms of one another. *)
     let take count : Parse<'t, 't []> = fun input ->
         if ParseState.canAdvance count input then
@@ -114,9 +117,8 @@ module Parse =
                        Returns = Some next } -> next input
                    | { State = input }       -> ParseResult.balked input
 
-    let orElse (p : Parse<'t, 'a>) (q : Parse<'t, 'a>) : Parse<'t, 'a> =
-        p >> function { Returns = Some _ } as it -> it
-                    | { State = input }          -> q input
+    let orElse (p : Parse<'t, 'a>) (q : Parse<'t, 'a>) : Parse<'t, 'a> = fun input ->
+        p input |> function { Returns = Some _ } as it -> it | _ -> q input
 
     let choice alternatives : Parse<'t, 'a> =
         Seq.reduceBack orElse alternatives
